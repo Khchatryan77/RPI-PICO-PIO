@@ -137,7 +137,7 @@ def crc8(datagram, initial_value=0):
     return crc
 
 
-def response_uart():
+def response_uart(uart1):
     if uart1.any():
         for i in range(10):
             response = uart1.read(4)
@@ -148,6 +148,8 @@ def response_uart():
                         print('response', response + response2)
                         if response[2] == REGISTORS['IFCNT']:
                             print('IFCNT', response2[2])
+                        elif response[2] == REGISTORS['SG_RESULT']:
+                            print('SG_RESULT', response2[2])
                     else:
                         pass
                         # print('response2 is None')
@@ -168,7 +170,7 @@ def read_register(slave, reg):
     packet = [sync, addr, reg]
     crc = crc8(packet)
     uart1.write(bytearray(packet + [crc]))
-    time.sleep_us(140)  # 140
+    utime.sleep_us(140)  # 140
 
 
 def write_register(slave, reg, value):
@@ -188,39 +190,46 @@ def write_register(slave, reg, value):
     uart1.write(bytearray(packet + [crc]))
     utime.sleep_us(500)
 
-    response_uart()
-
-#uart0.irq(handler=uart0_handler, trigger=uart0.RX_ANY)
+    #response_uart()
+    
 uart0.irq(trigger = UART.IRQ_RXIDLE, handler = uart0_handler)
+
+uart1.irq(trigger = UART.IRQ_RXIDLE, handler = response_uart)
 
 Motors["Motor_X"]["End_stop_X"].irq(trigger=Pin.IRQ_FALLING, handler=end_stop_handler)
 
 Motors["Motor_Y"]["End_stop_Y"].irq(trigger=Pin.IRQ_FALLING, handler=end_stop_handler)
 
-write_register(SLAVE_ADDR_1, REGISTORS['GCONF'], 0b11001000)
-write_register(SLAVE_ADDR_2, REGISTORS['GCONF'], 0b11001000)
-write_register(SLAVE_ADDR_3, REGISTORS['GCONF'], 0b11001000)
-write_register(SLAVE_ADDR_4, REGISTORS['GCONF'], 0b11001000)
+write_register(SLAVE_ADDR_1, REGISTORS['SGTHRS'], 10)
 
-write_register(SLAVE_ADDR_1, REGISTORS['CHOPCONF'], 0x15000053)
-write_register(SLAVE_ADDR_2, REGISTORS['CHOPCONF'], 0x15000053)
-write_register(SLAVE_ADDR_3, REGISTORS['CHOPCONF'], 0x15000053)
-write_register(SLAVE_ADDR_4, REGISTORS['CHOPCONF'], 0x15000053)
+write_register(SLAVE_ADDR_1, REGISTORS['GCONF'], 0b11001000)
+write_register(SLAVE_ADDR_2, REGISTORS['GCONF'], 0b11001100)
+write_register(SLAVE_ADDR_3, REGISTORS['GCONF'], 0b11001100)
+write_register(SLAVE_ADDR_4, REGISTORS['GCONF'], 0b11001100)
+
+write_register(SLAVE_ADDR_1, REGISTORS['CHOPCONF'], 0x13000053)
+write_register(SLAVE_ADDR_2, REGISTORS['CHOPCONF'], 0x13000053)
+write_register(SLAVE_ADDR_3, REGISTORS['CHOPCONF'], 0x13000053)
+write_register(SLAVE_ADDR_4, REGISTORS['CHOPCONF'], 0x13000053)
+
+
+
+
 
 FAN1.value(1)
-
+Motors["Motor_X"]["en_pin"].off()
 
 while True:
-    print('buffer', buffer)
+    #print('buffer', buffer)
     if buffer and buffer[0] == 'move_motors':
         
-        move_motor(Motors["Motor_X"], 15000, 0, freq=400000)
+        move_motor(Motors["Motor_X"], 150000, 1, freq=400000)
 
-        move_motor(Motors["Motor_Y"], 15000, 0, freq=400000)
+        #move_motor(Motors["Motor_Y"], 15000, 1, freq=400000)
 
-        move_motor(Motors["Motor_Z"], 15000, 0, freq=400000)
+        #move_motor(Motors["Motor_Z"], 15000, 1, freq=400000)
 
-        move_motor(Motors["Motor_E"], 15000, 0, freq=400000)
+        #move_motor(Motors["Motor_E"], 15000, 1, freq=400000)
         
         buffer.pop(0)
     elif len(buffer) > 0:
@@ -229,5 +238,14 @@ while True:
         
     else:
         pass
+    
+    read_register(SLAVE_ADDR_1, REGISTORS['SG_RESULT'])
+    #read_register(SLAVE_ADDR_2, REGISTORS['SG_RESULT'])
+    #read_register(SLAVE_ADDR_3, REGISTORS['SG_RESULT'])
+    #read_register(SLAVE_ADDR_4, REGISTORS['SG_RESULT'])
+    
+    #response_uart()
+    
+    utime.sleep_ms(100)
 
-    utime.sleep_ms(10)
+
