@@ -1,5 +1,5 @@
 import rp2
-import time
+import utime
 from machine import Pin, UART
 from register import REGISTORS
 
@@ -46,6 +46,8 @@ Running = True
 FAN1 = Pin(17, Pin.OUT)
 
 sm ={}
+
+buffer = []
     
 Motors = {
     "Motor_X": {
@@ -84,6 +86,7 @@ Motors["Motor_Z"]["en_pin"].on()
 Motors["Motor_E"]["en_pin"].on()
 
 sm4 = rp2.StateMachine(4, blink, freq=100_000, in_base=Motors["Motor_X"]["End_stop_X"])
+sm5 = rp2.StateMachine(5, blink, freq=100_000, in_base=Motors["Motor_Y"]["End_stop_Y"])
 
 def end_stop_handler(pin):
     for sm_id in sm:
@@ -98,7 +101,7 @@ def end_stop_handler(pin):
     Running= False
     
     
-def uart0_handler():
+def uart0_handler(uart0):
     if uart0.any():  # check if there is data
         data = uart0.read().decode().strip()  # read all available data
         buffer.append(data)
@@ -120,11 +123,10 @@ def move_motor(motor_id, steps, dir_val, freq = 400_000):
     sm[sm_id].active(1)
     sm[sm_id].put(steps)
     
+    
 def crc8(datagram, initial_value=0):
     crc = initial_value
-    # Iterate bytes in data
     for byte in datagram:
-        # Iterate bits in byte
         for _ in range(0, 8):
             if (crc >> 7) ^ (byte & 0x01):
                 crc = ((crc << 1) ^ 0x07) & 0xFF
@@ -137,8 +139,6 @@ def crc8(datagram, initial_value=0):
 
 def response_uart():
     if uart1.any():
-        # R = uart.read()
-        # print('R', R)
         for i in range(10):
             response = uart1.read(4)
             if response is not None and len(response) >= 2:
@@ -159,7 +159,7 @@ def response_uart():
                 # print('response is None or too short')
     else:
         print("Invalid read response:")
-    time.sleep_us(50)
+    utime.sleep_us(50)
 
 
 def read_register(slave, reg):
@@ -186,21 +186,16 @@ def write_register(slave, reg, value):
     crc = crc8(packet)
 
     uart1.write(bytearray(packet + [crc]))
-    time.sleep_us(500)
+    utime.sleep_us(500)
 
     response_uart()
 
 #uart0.irq(handler=uart0_handler, trigger=uart0.RX_ANY)
-
-move_motor(Motors["Motor_X"], 1500, 0, freq=400000)
-
-move_motor(Motors["Motor_Y"], 15000, 0, freq=400000)
-
-move_motor(Motors["Motor_Z"], 1000, 0, freq=400000)
-
-move_motor(Motors["Motor_E"], 15000, 0, freq=400000)
+uart0.irq(trigger = UART.IRQ_RXIDLE, handler = uart0_handler)
 
 Motors["Motor_X"]["End_stop_X"].irq(trigger=Pin.IRQ_FALLING, handler=end_stop_handler)
+
+Motors["Motor_Y"]["End_stop_Y"].irq(trigger=Pin.IRQ_FALLING, handler=end_stop_handler)
 
 write_register(SLAVE_ADDR_1, REGISTORS['GCONF'], 0b11001000)
 write_register(SLAVE_ADDR_2, REGISTORS['GCONF'], 0b11001000)
@@ -214,18 +209,25 @@ write_register(SLAVE_ADDR_4, REGISTORS['CHOPCONF'], 0x15000053)
 
 FAN1.value(1)
 
-'''
+
 while True:
-    
-    print('end_stop_X', Motors["Motor_X"]["End_stop_X"].value())
-    if Motors["Motor_X"]["End_stop_X"].value() == 0:
-        #for sm_id in sm:
-            #sm[sm_id].active(0)
+    print('buffer', buffer)
+    if buffer and buffer[0] == 'move_motors':
         
-        Motors["Motor_X"]["en_pin"].value(1)
-        Motors["Motor_Y"]["en_pin"].value(1)
-        Motors["Motor_Z"]["en_pin"].value(1)
-        Motors["Motor_E"]["en_pin"].value(1)
-    
-    time.sleep_ms(10)
-'''
+        move_motor(Motors["Motor_X"], 15000, 0, freq=400000)
+
+        move_motor(Motors["Motor_Y"], 15000, 0, freq=400000)
+
+        move_motor(Motors["Motor_Z"], 15000, 0, freq=400000)
+
+        move_motor(Motors["Motor_E"], 15000, 0, freq=400000)
+        
+        buffer.pop(0)
+    elif len(buffer) > 0:
+        
+        buffer.pop(0)
+        
+    else:
+        pass
+
+    utime.sleep_ms(10)
